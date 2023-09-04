@@ -1,0 +1,8 @@
+streamlit
+langchain
+openai
+streamlit-feedback
+pypdf
+sentence_transformers
+tiktoken
+python-dotenv
