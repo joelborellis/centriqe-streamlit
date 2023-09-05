@@ -10,4 +10,4 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
-CMD streamlit run ./app/Chatbot.py
+CMD streamlit run ./app/app.py
