@@ -9,7 +9,7 @@ from langchain.memory.chat_message_histories import StreamlitChatMessageHistory
 from langchain import PromptTemplate, LLMChain
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores.azuresearch import AzureSearch
-from langchain.callbacks import StreamlitCallbackHandler
+from langchain.callbacks.base import BaseCallbackHandler
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,6 +27,7 @@ with st.sidebar:
     fit_options = st.multiselect(
             'What fit do you prefer?',
             ['Slim', 'Regular'])
+
 
 def search_api(query: str) -> str:
     model: str = "text-embedding-ada-002"
@@ -65,10 +66,10 @@ def generate_response(input_task, input_customer, input_material, input_color, i
     materials = [material for material in input_material]
     colors = [color for color in input_color]
     fits = [fit for fit in input_fit]
-    #print(" ".join(materials + colors + fits))
+    print(" ".join(materials + colors + fits))
 
     # search based on the material color and fit and include the task
-    r = search_api(" ".join(materials + colors + fits) + input_task)
+    r = search_api(" ".join(materials + colors + fits))
     #print(r)
 
     # Setup memory for contextual conversation
@@ -84,16 +85,18 @@ def generate_response(input_task, input_customer, input_material, input_color, i
         "human_input", # Even if it's blank
     ],
     template=(
-        """You are brand marketing expert for Jade Blue clothing retailer. Your job is to write helpful suggestions for Jade Blue sales associates that they can use with their customers.  You should perform this task with all your abilities.
-        The suggestions should only include what the Jade Blue sales associate would say to the customer.
+        """You are brand marketing expert for Jade Blue clothing retailer. Your job is to write helpful suggestions for Jade Blue sales associates that they can use with their customers.  
+        You should perform this task with all your abilities.
+        Your output should only include what the Jade Blue sales associate would say to the customer and NOT the customers comments.
         You will be given a task as input from the sales associate.  Examples of tasks are:
-        Write me a suggestion for a formal shirt combined with formal trousers.  Use the product and customer information provided.
-        Write me an entertaining summary of a pair of track pants that might pair well with a casual shirt.  Use the product and customer information provided.
+        Write me a suggestion for a formal shirt combined with formal trousers.
+        Write me an entertaining summary of a pair of track pants that might pair well with a casual shirt.
+        
         Here is your task:
 
         {task}
 
-        Perform your task and create output that is vibrant and entertaining using the following product information:
+        Perform your task and output vibrant and entertaining information using the following product information:
         
         {product}
         
