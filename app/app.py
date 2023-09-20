@@ -10,6 +10,7 @@ from langchain import PromptTemplate, LLMChain
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores.azuresearch import AzureSearch
 from langchain.callbacks.base import BaseCallbackHandler
+from langchain.callbacks import StreamlitCallbackHandler
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -85,7 +86,8 @@ def generate_response(input_task, input_customer, input_material, input_color, i
         "human_input", # Even if it's blank
     ],
     template=(
-        """You are brand marketing expert for Jade Blue clothing retailer. Your job is to write helpful suggestions for Jade Blue sales associates that they can use with their customers.  
+        """You are brand marketing expert for Jade Blue clothing retailer. 
+        Your job is to write helpful suggestions for Jade Blue sales associates that they can use with their customers.  
         You should perform this task with all your abilities.
         Your output should only include what the Jade Blue sales associate would say to the customer and NOT the customers comments.
         You will be given a task as input from the sales associate.  Examples of tasks are:
@@ -139,7 +141,12 @@ with st.form("my_form"):
     task = st.text_area("Perform task:", "Write me a suggestion for a formal shirt combined with formal trousers")
     
     submitted = st.form_submit_button("Submit")
+
+    st.divider()
+    
     #if not openai_api_key:
     #    st.info("Please add your OpenAI API key to continue.")
     if submitted:
-        generate_response(task, customer, material_options, color_options, fit_options)
+        with st.spinner('Calling API...'):
+            generate_response(task, customer, material_options, color_options, fit_options)
+            st.success('Done!')

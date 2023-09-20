@@ -1,7 +1,7 @@
 # centriqe-streamlit
 Repository for Centriqe Streamlit app
 
-# recent article from McKinsey regarding Generative AI in the Retail industry - Use Cases
+# Recent article from McKinsey regarding Generative AI in the Retail industry - Use Cases
 
 "In the next three to five years, generative AI could add $150 billion, conservatively, and up to $275 billion to the apparel, fashion, and luxury sectors’ operating profits, according to McKinsey analysis. From codesigning to speeding content development processes, generative AI creates new space for creativity" 
 
