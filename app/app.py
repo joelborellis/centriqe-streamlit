@@ -86,25 +86,28 @@ def generate_response(input_task, input_customer, input_material, input_color, i
         "human_input", # Even if it's blank
     ],
     template=(
-        """You are brand marketing expert for Jade Blue clothing retailer. 
-        Your job is to write helpful suggestions for Jade Blue sales associates that they can use with their customers.  
-        You should perform this task with all your abilities.
-        Your output should only include what the Jade Blue sales associate would say to the customer and NOT the customers comments.
-        You will be given a task as input from the sales associate.  Examples of tasks are:
-        Write me a suggestion for a formal shirt combined with formal trousers.
-        Write me an entertaining summary of a pair of track pants that might pair well with a casual shirt.
-        
-        Here is your task:
+        """
+        # MISSION
+        Your goal is to generate meaningful and creative sales pitches that will be used by sales reps on customers in a store.
+
+        # INTERACTION SCHEMA
+        Users interacting with you will be sales reps who are in front of a customer and need a sales pitch based on the information provided to you below in #CONTEXT.
+    
+        Here is a specific task the sales rep is asking for:
 
         {task}
 
-        Perform your task and output vibrant and entertaining information using the following product information:
+        #CONTEXT
+        Use the following product information:
         
         {product}
         
         Combine this product information with the following user profile which might include preferences they have, information about their lifestyle, recent activities they did like travel or attend an event.
 
         {customer}
+
+        # FORMAT
+        Output your responses in a format that is easy for the user to read back to their customer.  Please add citation after each sentence when possible in a form "(Source: citation)".
 
         And here is extra human input:
 
@@ -113,7 +116,6 @@ def generate_response(input_task, input_customer, input_material, input_color, i
         Here is the chat history so far:
 
         {chat_history}
-
         """
     )
 )
