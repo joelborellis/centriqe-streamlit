@@ -1,154 +1,177 @@
+import openai
 import streamlit as st
 import os
-import openai
-
-
-from langchain.chat_models import ChatOpenAI
-from langchain.memory import ConversationBufferMemory
-from langchain.memory.chat_message_histories import StreamlitChatMessageHistory
-from langchain import PromptTemplate, LLMChain
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores.azuresearch import AzureSearch
-from langchain.callbacks.base import BaseCallbackHandler
-from langchain.callbacks import StreamlitCallbackHandler
 from dotenv import load_dotenv
+from langchain.vectorstores.azuresearch import AzureSearch
+from langchain.embeddings import OpenAIEmbeddings
+from azure.search.documents.indexes.models import (
+    SemanticSettings,
+    SemanticConfiguration,
+    PrioritizedFields,
+    SemanticField
+)
 
 load_dotenv()
 
-st.title("Centriqe Product Assist")
+vector_store_address: str = os.environ.get("AZURE_SEARCH_ENDPOINT")
+vector_store_key: str = os.environ.get("AZURE_SEARCH_ADMIN_KEY")
+model_embed: str = os.environ.get("OPENAI_MODEL_EMBED")
+embeddings: OpenAIEmbeddings = OpenAIEmbeddings(deployment=model_embed, chunk_size=1)
 
-with st.sidebar:
-    "[Visit Centriqe](https://centriqe.com/)"
-    material_options = st.multiselect(
-            'What materials do you prefer?',
-            ['Cotton', 'Rayon', 'Wool', 'Linen'])
-    color_options = st.multiselect(
-            'What colors do you prefer?',
-            ['Blue', 'Green', 'Black', 'Olive'])
-    fit_options = st.multiselect(
-            'What fit do you prefer?',
-            ['Slim', 'Regular'])
+index_name: str = os.environ.get("AZURE_SEARCH_INDEX")
 
-
-def search_api(query: str) -> str:
-    model: str = "text-embedding-ada-002"
-
-    vector_store_address: str = os.environ.get("AZURE_SEARCH_ENDPOINT")
-    vector_store_key: str = os.environ.get("AZURE_SEARCH_ADMIN_KEY")
-
-    embeddings: OpenAIEmbeddings = OpenAIEmbeddings(deployment=model, chunk_size=1)
-    index_name: str = "centriqe-vector-demo"
-
-    vector_store: AzureSearch = AzureSearch(
-        azure_search_endpoint=vector_store_address,
-        azure_search_key=vector_store_key,
-        index_name=index_name,
-        embedding_function=embeddings.embed_query,
+vector_store: AzureSearch = AzureSearch(
+    azure_search_endpoint=vector_store_address,
+    azure_search_key=vector_store_key,
+    index_name=index_name,
+    embedding_function=embeddings.embed_query,
+    semantic_configuration_name='centriqe-config',
+        semantic_settings=SemanticSettings(
+            default_configuration='centriqe-config',
+            configurations=[
+                SemanticConfiguration(
+                    name='centriqe-config',
+                    prioritized_fields=PrioritizedFields(
+                        title_field=SemanticField(field_name='content'),
+                        prioritized_content_fields=[SemanticField(field_name='content')],
+                        prioritized_keywords_fields=[SemanticField(field_name='metadata')]
+                    ))
+            ])
     )
 
+with st.sidebar:
+    #st.button("New Chat", type="primary")
+    st.write("💬 Start a new Chat")
+    if st.button('New Chat'):
+        # Delete all the items in Session state
+        for key in st.session_state.keys():
+            del st.session_state[key]
+        st.rerun()
+    #openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
+    #"[Get an OpenAI API key](https://platform.openai.com/account/api-keys)"
+    #"[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/streamlit/llm-examples?quickstart=1)"
+
+st.title("Centriqe - AskBuddy")
+
+with st.expander("⚙️ Settings"):
+    with st.container():
+        st.write("LLM Parameters (for chat only)")
+        tab1, tab2, tab3 = st.tabs(["Temperature", "Max Tokens", "Model"])
+        tab1.subheader("Set Temperature")
+        temp = tab1.slider('Temperature', 0, 1, 0)
+        tab2.subheader("Set Max Tokens")
+        max_tokens = tab2.slider('Max Tokens', 0, 4000, 2000)
+        tab3.subheader("Choose a model")
+        model = tab3.selectbox(
+            'Choose Model',
+            ('gpt-4-32k-0613', 'gpt-35-turbo-16k-0613'))
+st.divider()
+
+###     file operations
+
+def save_file(filepath, content):
+    with open(filepath, 'w', encoding='utf-8') as outfile:
+        outfile.write(content)
+
+def open_file(filepath):
+    with open(filepath, 'r', encoding='utf-8', errors='ignore') as infile:
+        return infile.read()
+    
+def chatbot(conversation, engine=model, temperature=0, max_tokens=2000):
+    max_retry = 7
+    retry = 0    
+
+    while True:
+        try:
+            response = openai.ChatCompletion.create(engine=engine, messages=conversation, temperature=temperature, max_tokens=max_tokens)
+            text = response['choices'][0]['message']['content']
+            
+            return text, response['usage']['total_tokens']
+        except Exception as oops:
+            print(f'\n\nError communicating with OpenAI: "{oops}"')
+            exit(5)
+
+def search_api(query: str) -> str:
+    results = []
     # Perform a similarity search
     docs = vector_store.similarity_search(
         query=query,
-        k=3,
-        search_type="similarity",
-    )
-    #return (docs[0].page_content)
-    #return "\n".join(docs.page_content)
-    results = [doc.page_content for doc in docs]
-    return "\n".join(results)
+        k=10,
+        search_type="hybrid",
+        )
 
-def generate_response(input_task, input_customer, input_material, input_color, input_fit):
+    for doc in docs:
+        results.append(f"[PRODUCT NAME:  {doc.metadata['name']}]" + f"[PRODUCT BRAND:  {doc.metadata['brand']}]" + "\n" + f"[URL:  {doc.metadata['image']}]" + "\n" + (doc.page_content))
+    return ("\n".join(results))
     
-    #openai.api_type = os.environ.get("OPENAI_API_TYPE")
-    #openai.api_base = os.environ.get("OPENAI_API_BASE")
-    #openai.api_version = os.environ.get("OPENAI_API_VERSION")
+# use this for capturing an easy to read transcript of the chat conversation
+all_messages = list()
+
+if "messages_chatbot" not in st.session_state:
+    st.session_state["messages_chatbot"] = [{"role": "assistant", "content": "Please tell me what you are looking for?"}]
+
+# display the flow of chat bubbles between user and assistant
+for msg in st.session_state.messages_chatbot:
+    if msg["role"] == "user":
+        st.chat_message(msg["role"]).write(msg["content"])
+        all_messages.append('SELLER: %s' % msg["content"])
+    elif msg["role"] == "assistant":
+        st.chat_message(msg["role"]).write(msg["content"])
+        all_messages.append('INTAKE: %s' % msg["content"])
+
+if prompt := st.chat_input():
+
+    openai.api_type = os.environ.get("OPENAI_API_TYPE")
+    openai.api_base = os.environ.get("OPENAI_API_BASE")
+    openai.api_version = os.environ.get("OPENAI_API_VERSION")
     openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-    materials = [material for material in input_material]
-    colors = [color for color in input_color]
-    fits = [fit for fit in input_fit]
-    print(" ".join(materials + colors + fits))
+    # set the system message and user message into the session state
+    st.session_state.messages_chatbot.append({"role": "system", "content": open_file('../system_01_intake.md').replace('<<CONTEXT>>', search_api(prompt))})
+    st.session_state.messages_chatbot.append({"role": "user", "content": prompt})
 
-    # search based on the material color and fit and include the task
-    r = search_api(" ".join(materials + colors + fits))
-    #print(r)
+    # now fill the user chat bubble and append to all_messages - this is used to make an easy to read conversation
+    st.chat_message("user").write(prompt)
 
-    # Setup memory for contextual conversation
-    msgs = StreamlitChatMessageHistory()
-    memory = ConversationBufferMemory(memory_key="chat_history", input_key="human_input", chat_memory=msgs, return_messages=True)
+    # now call the openai chat completion and get the response into a string
+    #msg, tokens = chatbot(st.session_state.messages_chatbot)
+    response = openai.ChatCompletion.create(engine=model, temperature=temp, max_tokens=max_tokens, messages=st.session_state.messages_chatbot)
+    msg = response.choices[0].message
 
-    prompt = PromptTemplate(
-    input_variables=[
-        "task",
-        "product",
-        "customer",
-        "chat_history",
-        "human_input", # Even if it's blank
-    ],
-    template=(
-        """
-        # MISSION
-        Your goal is to generate meaningful and creative sales pitches that will be used by sales reps on customers in a store.
+    # add the response from the llm to the session state
+    st.session_state.messages_chatbot.append(msg)
 
-        # INTERACTION SCHEMA
-        Users interacting with you will be sales reps who are in front of a customer and need a sales pitch based on the information provided to you below in #CONTEXT.
-    
-        Here is a specific task the sales rep is asking for:
+    # now fill the assistant chat bubble and append to all_messages - this is used to make an easy to read conversation
+    st.chat_message("assistant").write(msg.content)
 
-        {task}
+st.divider()
 
-        #CONTEXT
-        Use the following product information:
-        
-        {product}
-        
-        Combine this product information with the following user profile which might include preferences they have, information about their lifestyle, recent activities they did like travel or attend an event.
+with st.form("send_intake"):
+        st.write("Click to start generating notes and suggestions")
+        submitted = st.form_submit_button("Done")
+        if submitted:
+            conversation = list()
+            conversation.append({'role': 'system', 'content': open_file('../system_02_prepare_notes.md')})
+            text_block = '\n\n'.join(all_messages)
+            chat_log = '<<BEGIN SELLER INTAKE CHAT>>\n\n%s\n\n<<END SELLER INTAKE CHAT>>' % text_block
+            with st.expander("💬 Chat Log"):
+                st.write(chat_log)
+            #save_file('logs/log_%s_chat.txt' % time(), chat_log)
+            conversation.append({'role': 'user', 'content': chat_log})
+            with st.spinner('Creating notes...'):
+                notes, tokens = chatbot(conversation)
+            #print('\n\nNotes version of conversation:\n\n%s' % notes)
+            #save_file('logs/log_%s_notes.txt' % time(), notes)
+            with st.expander("🗒️ Notes"):
+                st.write(notes)
 
-        {customer}
-
-        # FORMAT
-        Output your responses in a format that is easy for the user to read back to their customer.  Please add citation after each sentence when possible in a form "(Source: citation)".
-
-        And here is extra human input:
-
-        {human_input}
-
-        Here is the chat history so far:
-
-        {chat_history}
-        """
-    )
-)
-
-# Setup LLM and QA chain
-    llm = ChatOpenAI(
-        openai_api_key=openai.api_key, model_name="gpt-3.5-turbo-16k", temperature=0, streaming=True
-    )
-
-    #prompt_template = "{question}.  Find me information about the following accounts {account} in the following industry {industry}?"
-
-    llm_chain = LLMChain(
-            llm=llm,
-            prompt=prompt,
-            memory=memory, # Contains the input_key
-            verbose=True
-        )
-    #st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-    st.info(llm_chain.run({'human_input': "", 'task': input_task, 'product': r, 'customer': input_customer}))
-
-
-with st.form("my_form"):
-    #product = st.selectbox("Product: ", ('Greenfibre Mens Dark Grey Terry Rayon Slim Fit Solid Formal Trouser', 'Modi Jacket Mens Orange Terry Wool Textured Regular Fit Jacket', 'Greenfibre Mens Vineyard Green 100% Cotton Slim Fit Checked Casual Shirt'))
-    customer = st.text_area("Customer details:", "Loves the outdoors, likes to run and hike")
-    task = st.text_area("Perform task:", "Write me a suggestion for a formal shirt combined with formal trousers")
-    
-    submitted = st.form_submit_button("Submit")
-
-    st.divider()
-    
-    #if not openai_api_key:
-    #    st.info("Please add your OpenAI API key to continue.")
-    if submitted:
-        with st.spinner('Calling API...'):
-            generate_response(task, customer, material_options, color_options, fit_options)
-            st.success('Done!')
+            #print('\n\nGenerating Hypothesis Report')
+            conversation = list()
+            conversation.append({'role': 'system', 'content': open_file('../system_03_diagnosis.md').replace('<<CONTEXT>>', search_api(notes))})
+            conversation.append({'role': 'user', 'content': notes})
+            with st.spinner('Creating suggestions...'):
+                report, tokens = chatbot(conversation)
+            ##save_file('logs/log_%s_diagnosis.txt' % time(), report)
+            #print('\n\nHypothesis Report:\n\n%s' % report)
+            with st.expander("🗣️ Suggestions"):
+                st.write(report)
