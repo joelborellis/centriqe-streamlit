@@ -101,7 +101,7 @@ def search_api(query: str) -> str:
         )
 
     for doc in docs:
-        results.append(f"[PRODUCT NAME:  {doc.metadata['name']}]" + f"[PRODUCT BRAND:  {doc.metadata['brand']}]" + "\n" + f"[URL:  {doc.metadata['image']}]" + "\n" + (doc.page_content))
+        results.append(f"[PRODUCT NAME:  {doc.metadata['name']}]" + f"[PRODUCT BRAND:  {doc.metadata['brand']}]" + "\n" + f"[URL:  {doc.metadata['image']}]" + "\n" + f"[PRICE:  {doc.metadata['price']}]" + "\n" + (doc.page_content))
     return ("\n".join(results))
     
 # use this for capturing an easy to read transcript of the chat conversation
@@ -167,7 +167,7 @@ with st.form("send_intake"):
 
             #print('\n\nGenerating Hypothesis Report')
             conversation = list()
-            conversation.append({'role': 'system', 'content': open_file('../system_03_diagnosis.md').replace('<<CONTEXT>>', search_api(notes))})
+            conversation.append({'role': 'system', 'content': open_file('../system_03_suggestion.md').replace('<<CONTEXT>>', search_api(notes))})
             conversation.append({'role': 'user', 'content': notes})
             with st.spinner('Creating suggestions...'):
                 report, tokens = chatbot(conversation)
