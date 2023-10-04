@@ -10,6 +10,7 @@ from azure.search.documents.indexes.models import (
     PrioritizedFields,
     SemanticField
 )
+import re
 
 load_dotenv()
 
@@ -47,9 +48,11 @@ with st.sidebar:
         for key in st.session_state.keys():
             del st.session_state[key]
         st.rerun()
-    #openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
-    #"[Get an OpenAI API key](https://platform.openai.com/account/api-keys)"
-    #"[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/streamlit/llm-examples?quickstart=1)"
+    st.subheader('README', divider='blue')
+    st.write('The chat function is being driven by a system prompt and :blue[GPT-4] - it is using information from a product catalog to generate questions. :red[Improvement:] - add user infromation and more rich product data')
+    st.write('After chatting and clicking :red[Done] there is another system prompt and a call to :blue[GPT-4] to generate the notes.')
+    st.write('After notes are generated, they are passed to another system prompt and a call to :blue[GPT-4] to generate the suggestions.  :red[Improvement:] - need more rich product catalog')
+    st.write('The system prompt used to generate the suggestions uses the notes and context data from a product catalog.  :red[Improvement:] - need more rich product catalog')
 
 st.title("Centriqe - AskBuddy")
 
@@ -80,7 +83,7 @@ def open_file(filepath):
 def chatbot(conversation, engine=model, temperature=0, max_tokens=2000):
     max_retry = 7
     retry = 0    
-
+    print(model)
     while True:
         try:
             response = openai.ChatCompletion.create(engine=engine, messages=conversation, temperature=temperature, max_tokens=max_tokens)
@@ -90,6 +93,14 @@ def chatbot(conversation, engine=model, temperature=0, max_tokens=2000):
         except Exception as oops:
             print(f'\n\nError communicating with OpenAI: "{oops}"')
             exit(5)
+
+def find_url(string):  
+    url_pattern = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')  
+    found_urls = re.findall(url_pattern, string)  
+    return found_urls  
+
+def calculate_total_cost(cost_per_token, num_tokens):  
+    return cost_per_token * num_tokens 
 
 def search_api(query: str) -> str:
     results = []
@@ -102,6 +113,7 @@ def search_api(query: str) -> str:
 
     for doc in docs:
         results.append(f"[PRODUCT NAME:  {doc.metadata['name']}]" + f"[PRODUCT BRAND:  {doc.metadata['brand']}]" + "\n" + f"[URL:  {doc.metadata['image']}]" + "\n" + f"[PRICE:  {doc.metadata['price']}]" + "\n" + (doc.page_content))
+    #print("\n".join(results))
     return ("\n".join(results))
     
 # use this for capturing an easy to read transcript of the chat conversation
@@ -109,6 +121,9 @@ all_messages = list()
 
 if "messages_chatbot" not in st.session_state:
     st.session_state["messages_chatbot"] = [{"role": "assistant", "content": "Please tell me what you are looking for?"}]
+
+if "completion_tokens" not in st.session_state:
+    st.session_state["completion_tokens"] = 0
 
 # display the flow of chat bubbles between user and assistant
 for msg in st.session_state.messages_chatbot:
@@ -135,7 +150,11 @@ if prompt := st.chat_input():
 
     # now call the openai chat completion and get the response into a string
     #msg, tokens = chatbot(st.session_state.messages_chatbot)
+    print(model)
     response = openai.ChatCompletion.create(engine=model, temperature=temp, max_tokens=max_tokens, messages=st.session_state.messages_chatbot)
+    tokens = response['usage']['total_tokens']
+    #print(tokens)
+    st.session_state.completion_tokens = tokens
     msg = response.choices[0].message
 
     # add the response from the llm to the session state
@@ -154,12 +173,14 @@ with st.form("send_intake"):
             conversation.append({'role': 'system', 'content': open_file('../system_02_prepare_notes.md')})
             text_block = '\n\n'.join(all_messages)
             chat_log = '<<BEGIN SELLER INTAKE CHAT>>\n\n%s\n\n<<END SELLER INTAKE CHAT>>' % text_block
+            #print(st.session_state.completion_tokens)
             with st.expander("💬 Chat Log"):
                 st.write(chat_log)
+                #st.write(calculate_total_cost(.12, st.session_state.completion_tokens))
             #save_file('logs/log_%s_chat.txt' % time(), chat_log)
             conversation.append({'role': 'user', 'content': chat_log})
             with st.spinner('Creating notes...'):
-                notes, tokens = chatbot(conversation)
+                notes, tokens = chatbot(conversation, model)
             #print('\n\nNotes version of conversation:\n\n%s' % notes)
             #save_file('logs/log_%s_notes.txt' % time(), notes)
             with st.expander("🗒️ Notes"):
@@ -170,8 +191,8 @@ with st.form("send_intake"):
             conversation.append({'role': 'system', 'content': open_file('../system_03_suggestion.md').replace('<<CONTEXT>>', search_api(notes))})
             conversation.append({'role': 'user', 'content': notes})
             with st.spinner('Creating suggestions...'):
-                report, tokens = chatbot(conversation)
-            ##save_file('logs/log_%s_diagnosis.txt' % time(), report)
-            #print('\n\nHypothesis Report:\n\n%s' % report)
+                report, tokens = chatbot(conversation, model)
+            #url = find_url(report)  
+            #print(url)  
             with st.expander("🗣️ Suggestions"):
                 st.write(report)
